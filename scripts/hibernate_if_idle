@@ -1,41 +1,29 @@
 #!/bin/bash
 
 # Set PulseAudio environment variables
-export PULSE_SERVER=unix:/run/user/$(id -u)/pulse/native
-export DISPLAY=:0
-export XAUTHORITY=/home/$(whoami)/.Xauthority
+export PULSE_SERVER="unix:/run/user/$(id -u)/pulse/native"
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 
 # Idle time threshold in milliseconds (10 minutes = 600000 ms)
 IDLE_THRESHOLD=600000
-
-# Command to sleep or hibernate
-SLEEP_CMD="systemctl suspend"
-HIBERNATE_CMD="systemctl hibernate"
 
 # Get the current idle time
 IDLE_TIME=$(xprintidle)
 
 # Check if any audio sink is running
-AUDIO_RUNNING=$(pactl list sinks | grep -q 'State: RUNNING' && echo true || echo false)
+AUDIO_RUNNING=$(pactl list sinks 2>/dev/null | grep -q 'State: RUNNING' && echo true || echo false)
 
 # Get battery status (use acpi for battery details)
-BATTERY_STATUS=$(acpi -b | grep -oP '(Charging|Discharging)')
-BATTERY_PERCENT=$(acpi -b | grep -oP '\d+%' | tr -d '%')
+BATTERY_STATUS=$(acpi -b 2>/dev/null | grep -oP '(Charging|Discharging)' | head -1)
+BATTERY_PERCENT=$(acpi -b 2>/dev/null | grep -oP '\d+%' | head -1 | tr -d '%')
+BATTERY_PERCENT=${BATTERY_PERCENT:-100}
 
-# Debugging: Print information
-echo "Idle Time: $IDLE_TIME ms"
-echo "Audio Running: $AUDIO_RUNNING"
-echo "Battery Status: $BATTERY_STATUS"
-echo "Battery Level: $BATTERY_PERCENT%"
-
-# Logic: Sleep after 10 minutes idle and no audio is playing
-if [ "$IDLE_TIME" -ge "$IDLE_THRESHOLD" ] && [ "$AUDIO_RUNNING" = false ]; then
-    echo "System is idle for 10 minutes and no audio is playing. Sleeping..."
-    eval "$SLEEP_CMD"
 # Logic: Hibernate if battery is low (below 15%) and idle for 10 minutes
-elif [ "$BATTERY_STATUS" = "Discharging" ] && [ "$BATTERY_PERCENT" -le 15 ] && [ "$IDLE_TIME" -ge "$IDLE_THRESHOLD" ] && [ "$AUDIO_RUNNING" = false ]; then
-    echo "Battery is low and idle for 10 minutes. Hibernating..."
-    eval "$HIBERNATE_CMD"
-else
-    echo "No action taken: Either idle time is not enough, audio is playing, or battery level is sufficient."
+# (must be checked BEFORE suspend, otherwise the generic suspend condition matches first)
+if [ "$BATTERY_STATUS" = "Discharging" ] && [ "$BATTERY_PERCENT" -le 15 ] && [ "$IDLE_TIME" -ge "$IDLE_THRESHOLD" ] && [ "$AUDIO_RUNNING" = false ]; then
+    systemctl hibernate
+# Logic: Sleep after 10 minutes idle and no audio is playing
+elif [ "$IDLE_TIME" -ge "$IDLE_THRESHOLD" ] && [ "$AUDIO_RUNNING" = false ]; then
+    systemctl suspend
 fi

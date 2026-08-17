@@ -1,29 +1,23 @@
 #!/bin/bash
 
 # Set PulseAudio/PipeWire environment variables
-export PULSE_SERVER=unix:/run/user/$(id -u)/pulse/native
-export DISPLAY=:0
-export XAUTHORITY=/home/$(whoami)/.Xauthority
+export PULSE_SERVER="unix:/run/user/$(id -u)/pulse/native"
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
 
 # Idle time threshold in milliseconds (5 minutes = 300000 ms)
 IDLE_THRESHOLD=300000
 
 # Command to run when idle
-COMMAND="DISPLAY=:0 XAUTHORITY=/home/luis/.Xauthority /home/luis/.config/bspwm/src/ScreenLocker"
+LOCKER="$HOME/.config/bspwm/src/ScreenLocker"
 
 # Get the current idle time
 IDLE_TIME=$(xprintidle)
 
 # Check if any audio stream is uncorked (actively playing)
-AUDIO_RUNNING=$(pactl list sink-inputs | grep -q 'Corked: no' && echo true || echo false)
-
-# Debugging: Print information
-echo "Idle Time: $IDLE_TIME ms"
-echo "Audio Running: $AUDIO_RUNNING"
+AUDIO_RUNNING=$(pactl list sink-inputs 2>/dev/null | grep -q 'Corked: no' && echo true || echo false)
 
 # Run the command if idle time exceeds the threshold and no audio is playing
 if [ "$IDLE_TIME" -ge "$IDLE_THRESHOLD" ] && [ "$AUDIO_RUNNING" = false ]; then
-    eval "$COMMAND"
-else
-    echo "Command not executed: Idle time is $IDLE_TIME ms or audio is playing."
+    "$LOCKER"
 fi

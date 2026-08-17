@@ -1,29 +1,24 @@
 #!/bin/bash
 
-
-export DISPLAY=:0
-export XAUTHORITY=/home/luis/.Xauthority  # Adjust if your username is different
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus  # For notifications
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}"
 
 # Set the battery warning threshold
 THRESHOLD=15
 
 # Get a list of connected Bluetooth devices' MAC addresses
-CONNECTED_DEVICES=$(bluetoothctl devices Connected | awk '{print $2}')
+CONNECTED_DEVICES=$(bluetoothctl devices Connected 2>/dev/null | awk '{print $2}')
 
 # Loop through each connected device
 for DEVICE in $CONNECTED_DEVICES; do
-    # Get battery percentage in hex format
-    DEVICE_BATTERY=$(bluetoothctl info "$DEVICE" | awk -F '[()]' '/Battery Percentage/ {print $2}' | tr -d '%')
+    INFO=$(bluetoothctl info "$DEVICE" 2>/dev/null)
+    DEVICE_NAME=$(printf '%s\n' "$INFO" | awk -F ': ' '/Name/ {print $2}')
+    DEVICE_ICON=$(printf '%s\n' "$INFO" | awk -F ': ' '/Icon/ {print $2}')
+    DEVICE_BATTERY=$(printf '%s\n' "$INFO" | awk -F '[()]' '/Battery Percentage/ {print $2}' | tr -d '%')
 
-    if [[ -n "$DEVICE_BATTERY" ]]; then
-        # Check if battery is below the threshold
-        if [[ $DEVICE_BATTERY -lt $THRESHOLD ]]; then
-            DEVICE_NAME=$(bluetoothctl info "$DEVICE" | awk -F ': ' '/Name/ {print $2}')
-            DEVICE_ICON=$(echo "$DEVICE_INFO" | awk -F ': ' '/Icon/ {print $2}')
-            
-			notify-send -u critical "🔋 Bluetooth Battery Low" \
-			                            "<big>Device: <b>$DEVICE_NAME</b> ($DEVICE) is at <b>$DEVICE_BATTERY%</b>.</big>" # --icon="$DEVICE_ICON"   
-         fi
+    if [ -n "$DEVICE_BATTERY" ] && [ "$DEVICE_BATTERY" -lt "$THRESHOLD" ]; then
+        notify-send -u critical "🔋 Bluetooth Battery Low" \
+            "<big>Device: <b>$DEVICE_NAME</b> ($DEVICE) is at <b>$DEVICE_BATTERY%</b>.</big>" --icon="$DEVICE_ICON"
     fi
 done

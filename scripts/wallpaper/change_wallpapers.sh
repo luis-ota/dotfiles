@@ -3,18 +3,19 @@
 # Define the directory where the wallpapers are stored
 WALLPAPER_DIR="$HOME/google-drive/diversos-salvos/wallpapers/"
 
-# Get a random wallpaper for each monitor
-WALLPAPER1=$(find "$WALLPAPER_DIR" -type f | shuf -n 1)
-WALLPAPER2=$(find "$WALLPAPER_DIR" -type f | shuf -n 1)
+[ -d "$WALLPAPER_DIR" ] || exit 1
+
+# Get random wallpapers for each monitor
+WALLPAPERS=($(find "$WALLPAPER_DIR" -type f | shuf -n 2))
 
 # Detect the number of connected screens using xrandr
-SCREEN_COUNT=$(xrandr | grep ' connected' | wc -l)
+SCREEN_COUNT=$(xrandr | grep -cw 'connected')
 
-if [ "$SCREEN_COUNT" -eq 1 ]; then
+if [ "$SCREEN_COUNT" -le 1 ]; then
     # If only one screen is connected, set wallpaper on the first screen
-    nitrogen --head=0 --set-scaled "$WALLPAPER1"
+    [ -n "${WALLPAPERS[0]}" ] && nitrogen --head=0 --set-scaled "${WALLPAPERS[0]}"
 else
     # If two screens are connected, set wallpaper for both screens
-    nitrogen --head=0 --set-scaled "$WALLPAPER1"
-    nitrogen --head=1 --set-scaled "$WALLPAPER2"
+    [ -n "${WALLPAPERS[0]}" ] && nitrogen --head=0 --set-scaled "${WALLPAPERS[0]}"
+    [ -n "${WALLPAPERS[1]}" ] && nitrogen --head=1 --set-scaled "${WALLPAPERS[1]}"
 fi
