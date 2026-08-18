@@ -18,6 +18,7 @@ IDLE_TIME=$(xprintidle)
 AUDIO_RUNNING=$(pactl list sink-inputs 2>/dev/null | grep -q 'Corked: no' && echo true || echo false)
 
 # Run the command if idle time exceeds the threshold and no audio is playing
-if [ "$IDLE_TIME" -ge "$IDLE_THRESHOLD" ] && [ "$AUDIO_RUNNING" = false ]; then
+# Skip if i3lock is already running (avoid multiple lock screen instances)
+if [ "$IDLE_TIME" -ge "$IDLE_THRESHOLD" ] && [ "$AUDIO_RUNNING" = false ] && ! pgrep -x i3lock >/dev/null 2>&1; then
     "$LOCKER"
 fi
