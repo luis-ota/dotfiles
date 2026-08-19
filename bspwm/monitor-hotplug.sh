@@ -25,24 +25,40 @@ trap 'rm -f "$LOCK_FILE"' EXIT
 
 ext_connected() { xrandr --query | grep -q "^$EXTERNAL connected"; }
 
-on_disconnect() {
-    log "DISCONNECT - migrando janelas de $EXTERNAL para $INTERNAL"
+# Migra janelas do EXTERNAL para o INTERNAL, salvando o estado.
+# Retorna 0 se salvou alguma janela.
+migrate_to_internal() {
     ext_desks=($(bspc query -D -m "$EXTERNAL" 2>/dev/null))
+    [ ${#ext_desks[@]} -eq 0 ] && return 1
     int_desks=($(bspc query -D -m "$INTERNAL" 2>/dev/null))
     : > "$STATE_FILE"
+    saved=0
     for i in "${!ext_desks[@]}"; do
         d="${ext_desks[$i]}"
         target="${int_desks[$i]:-${int_desks[0]}}"
         for w in $(bspc query -N -d "$d" -n .window 2>/dev/null); do
+            [ -z "$w" ] && continue
             class=$(bspc query -T -n "$w" 2>/dev/null | grep -o '"className":"[^"]*"' | head -1 | cut -d'"' -f4)
             echo "$w $class $((i+1))" >> "$STATE_FILE"
             log "  movendo $w ($class) desktop $((i+1)) -> $INTERNAL"
             bspc node "$w" --to-desktop "$target" 2>/dev/null
+            saved=1
         done
+    done
+    return $((1 - saved))
+}
+
+on_disconnect() {
+    log "DISCONNECT - migrando janelas de $EXTERNAL para $INTERNAL"
+    # Retenta por alguns segundos: na transicao o bspwm pode ainda nao
+    # ter os desktops do monitor fantasma prontos.
+    for attempt in $(seq 1 10); do
+        if migrate_to_internal; then break; fi
+        sleep 0.5
     done
     bspc monitor -f "$INTERNAL"
     xrandr --output "$EXTERNAL" --off
-    log "DISCONNECT concluido. $(wc -l < "$STATE_FILE") janelas salvas."
+    log "DISCONNECT concluido. $(wc -l < "$STATE_FILE" 2>/dev/null || echo 0) janelas salvas."
 }
 
 on_connect() {
@@ -64,21 +80,41 @@ on_connect() {
     log "CONNECT concluido."
 }
 
+# Resgate periodico: mesmo sem transicao detectada (ex: monitor sem energia
+# mas cabo plugado), move janelas presas em desktops de monitor sem sinal.
+rescue_stranded() {
+    ext_desks=($(bspc query -D -m "$EXTERNAL" 2>/dev/null))
+    [ ${#ext_desks[@]} -eq 0 ] && return
+    if migrate_to_internal; then
+        log "RESGATE: $(wc -l < "$STATE_FILE") janela(s) presas movidas para $INTERNAL"
+        bspc monitor -f "$INTERNAL"
+    fi
+}
+
 if ext_connected; then
     prev="connected"
     log "Iniciado com $EXTERNAL conectado."
 else
     prev="disconnected"
-    [ -n "$(bspc query -D -m "$EXTERNAL" 2>/dev/null)" ] && on_disconnect
+    rescue_stranded
     log "Iniciado com $EXTERNAL desconectado."
 fi
 
+counter=0
 while :; do
     if ext_connected; then cur="connected"; else cur="disconnected"; fi
     if [ "$cur" != "$prev" ]; then
         log "Transicao: $prev -> $cur"
         if [ "$cur" = "disconnected" ]; then on_disconnect; else on_connect; fi
         prev="$cur"
+        counter=0
+    else
+        # Sem mudanca de estado: a cada ~5s verifica janelas presas.
+        counter=$((counter + 1))
+        if [ "$cur" = "disconnected" ] && [ $counter -ge 5 ]; then
+            rescue_stranded
+            counter=0
+        fi
     fi
     sleep 1
 done
