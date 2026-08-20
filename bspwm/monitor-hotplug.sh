@@ -25,21 +25,24 @@ trap 'rm -f "$LOCK_FILE"' EXIT
 
 ext_connected() { xrandr --query | grep -q "^$EXTERNAL connected"; }
 
+# Desktop padrao no notebook para onde as janelas do monitor migram.
+DEFAULT_TARGET_DESKTOP=5
+
 # Migra janelas do EXTERNAL para o INTERNAL, salvando o estado.
 # Retorna 0 se salvou alguma janela.
 migrate_to_internal() {
     ext_desks=($(bspc query -D -m "$EXTERNAL" 2>/dev/null))
     [ ${#ext_desks[@]} -eq 0 ] && return 1
-    int_desks=($(bspc query -D -m "$INTERNAL" 2>/dev/null))
+    target=$(bspc query -D -m "$INTERNAL" -d "^$DEFAULT_TARGET_DESKTOP" 2>/dev/null)
+    [ -z "$target" ] && target=$(bspc query -D -m "$INTERNAL" | head -1)
     entries=()
     for i in "${!ext_desks[@]}"; do
         d="${ext_desks[$i]}"
-        target="${int_desks[$i]:-${int_desks[0]}}"
         for w in $(bspc query -N -d "$d" -n .window 2>/dev/null); do
             [ -z "$w" ] && continue
             class=$(bspc query -T -n "$w" 2>/dev/null | grep -o '"className":"[^"]*"' | head -1 | cut -d'"' -f4)
             entries+=("$w $class $((i+1))")
-            log "  movendo $w ($class) desktop $((i+1)) -> $INTERNAL"
+            log "  movendo $w ($class) desktop $((i+1)) -> $INTERNAL:$DEFAULT_TARGET_DESKTOP"
             bspc node "$w" --to-desktop "$target" 2>/dev/null
         done
     done
