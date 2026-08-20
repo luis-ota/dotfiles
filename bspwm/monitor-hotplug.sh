@@ -31,21 +31,25 @@ migrate_to_internal() {
     ext_desks=($(bspc query -D -m "$EXTERNAL" 2>/dev/null))
     [ ${#ext_desks[@]} -eq 0 ] && return 1
     int_desks=($(bspc query -D -m "$INTERNAL" 2>/dev/null))
-    : > "$STATE_FILE"
-    saved=0
+    entries=()
     for i in "${!ext_desks[@]}"; do
         d="${ext_desks[$i]}"
         target="${int_desks[$i]:-${int_desks[0]}}"
         for w in $(bspc query -N -d "$d" -n .window 2>/dev/null); do
             [ -z "$w" ] && continue
             class=$(bspc query -T -n "$w" 2>/dev/null | grep -o '"className":"[^"]*"' | head -1 | cut -d'"' -f4)
-            echo "$w $class $((i+1))" >> "$STATE_FILE"
+            entries+=("$w $class $((i+1))")
             log "  movendo $w ($class) desktop $((i+1)) -> $INTERNAL"
             bspc node "$w" --to-desktop "$target" 2>/dev/null
-            saved=1
         done
     done
-    return $((1 - saved))
+    # So truncar/gravar o state file se houver janelas (o rescue_stranded
+    # roda periodicamente e nao pode apagar o estado ja salvo).
+    if [ ${#entries[@]} -gt 0 ]; then
+        printf '%s\n' "${entries[@]}" > "$STATE_FILE"
+        return 0
+    fi
+    return 1
 }
 
 on_disconnect() {
